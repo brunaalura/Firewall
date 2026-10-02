@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Firewall — Filtro de Pacotes</title>
+<style>
+:root{
+  --bg:#10161D; --panel:#1A222C; --panel2:#1E2732; --border:#2A3542;
+  --text:#E7EDF3; --muted:#8FA0B2; --allow:#3FD69C; --block:#FF6B5E; --pending:#F2B84B;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  box-sizing:border-box;
+}
+*{box-sizing:border-box;}
+html{scroll-padding-top:env(safe-area-inset-top,0px);}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  line-height:1.45;
+}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+header{
+  padding:28px clamp(16px,4vw,40px) 20px; border-bottom:1px solid var(--border);
+  display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap;
+}
+header h1{margin:0; font-size:1.5rem; font-weight:650; letter-spacing:-0.01em;}
+header p{margin:4px 0 0; color:var(--muted); font-size:0.92rem;}
+button{
+  font:inherit; cursor:pointer; border-radius:6px; border:1px solid var(--border);
+  background:var(--panel2); color:var(--text); padding:8px 14px; transition:border-color .15s;
+}
+button:hover{border-color:#41505f;}
+button:focus-visible, input:focus-visible, select:focus-visible{outline:2px solid var(--pending); outline-offset:1px;}
+.reset-btn{color:var(--muted);}
+main{max-width:1180px; margin:0 auto; padding:24px clamp(16px,4vw,40px) 60px; display:grid; gap:20px; grid-template-columns:1.15fr 1fr;}
+@media(max-width:860px){main{grid-template-columns:1fr;}}
+.panel{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:18px 18px 20px;}
+.panel h2{margin:0 0 4px; font-size:0.95rem; text-transform:none; letter-spacing:0; color:var(--text); font-weight:600;}
+.panel .sub{color:var(--muted); font-size:0.82rem; margin:0 0 14px;}
+table{width:100%; border-collapse:collapse; font-size:0.82rem;}
+th{text-align:left; color:var(--muted); font-weight:500; padding:6px 6px; border-bottom:1px solid var(--border); white-space:nowrap;}
+td{padding:6px 6px; border-bottom:1px solid #202b36; vertical-align:middle;}
+.rule-num{color:var(--muted); width:22px;}
+select,input[type=text],input[type=number]{
+  background:var(--bg); border:1px solid var(--border); color:var(--text);
+  border-radius:5px; padding:5px 7px; font-size:0.8rem; width:100%;
+}
+.action-tag{padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:650; letter-spacing:.02em;}
+.action-allow{background:rgba(63,214,156,.14); color:var(--allow);}
+.action-block{background:rgba(255,107,94,.14); color:var(--block);}
+.row-actions{display:flex; gap:4px; white-space:nowrap;}
+.row-actions button{padding:3px 7px; font-size:0.75rem;}
+.add-rule{margin-top:12px; width:100%; padding:9px; font-size:0.82rem;}
+.default-deny{margin-top:8px; display:flex; align-items:center; gap:8px; color:var(--muted); font-size:0.78rem; padding:6px 2px 0; border-top:1px dashed var(--border); padding-top:10px;}
+form.packet-form{display:grid; grid-template-columns:1fr 1fr; gap:10px 12px; margin-bottom:16px;}
+form.packet-form label{font-size:0.75rem; color:var(--muted); display:block; margin-bottom:4px;}
+.full{grid-column:1/-1;}
+.send-btn{grid-column:1/-1; background:var(--pending); color:#1a1408; border:none; font-weight:650; padding:10px; font-size:0.88rem;}
+.send-btn:hover{filter:brightness(1.08);}
+.pipeline{display:flex; flex-direction:column; gap:6px; margin-bottom:14px; min-height:40px;}
+.pl-step{
+  display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:6px;
+  border:1px solid var(--border); background:var(--panel2); font-size:0.78rem; opacity:0.4; transition:opacity .25s, border-color .25s, background .25s;
+}
+.pl-step.active{opacity:1; border-color:var(--pending); background:rgba(242,184,75,.08);}
+.pl-step.matched-allow{opacity:1; border-color:var(--allow); background:rgba(63,214,156,.1);}
+.pl-step.matched-block{opacity:1; border-color:var(--block); background:rgba(255,107,94,.1);}
+.pl-idx{color:var(--muted); width:16px; flex:none;}
+.pl-desc{flex:1; color:var(--muted);}
+.pl-verdict{font-size:0.7rem; font-weight:650;}
+.result-banner{
+  margin-top:6px; padding:12px 14px; border-radius:8px; font-weight:650; font-size:0.92rem;
+  display:none; align-items:center; gap:10px;
+}
+.result-banner.show{display:flex;}
+.result-allow{background:rgba(63,214,156,.14); color:var(--allow); border:1px solid rgba(63,214,156,.4);}
+.result-block{background:rgba(255,107,94,.14); color:var(--block); border:1px solid rgba(255,107,94,.4);}
+.log-panel{grid-column:1/-1;}
+.log-empty{color:var(--muted); font-size:0.82rem;}
+.small{font-size:0.72rem;}
+::placeholder{color:#4d5c6c;}
+footer{color:var(--muted); font-size:0.75rem; text-align:center; padding:0 20px 30px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Firewall — Filtro de Pacotes</h1>
+    <p>As regras são avaliadas em ordem, de cima para baixo. A primeira que casar com o pacote decide o destino dele.</p>
+  </div>
+  <button class="reset-btn" id="resetBtn">Restaurar regras padrão</button>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Cadeia de regras</h2>
+    <p class="sub">IP e porta aceitam <span class="mono">any</span> como curinga. Endereços podem usar notação CIDR, ex. <span class="mono">192.168.1.0/24</span>.</p>
+    <table id="rulesTable">
+      <thead><tr>
+        <th>#</th><th>Ação</th><th>Protocolo</th><th>Origem</th><th>P.orig</th><th>Destino</th><th>P.dest</th><th></th>
+      </tr></thead>
+      <tbody id="rulesBody"></tbody>
+    </table>
+    <button class="add-rule" id="addRuleBtn">+ nova regra</button>
+    <div class="default-deny">Política padrão: se nenhuma regra casar, o pacote é <strong style="color:var(--block)">bloqueado</strong> (default deny).</div>
+  </section>
+
+  <section class="panel">
+    <h2>Montar pacote</h2>
+    <p class="sub">Preencha os campos e envie o pacote pela cadeia de regras.</p>
+    <form class="packet-form" id="packetForm">
+      <div><label>Protocolo</label>
+        <select id="pProto"><option>TCP</option><option>UDP</option><option>ICMP</option></select>
+      </div>
+      <div><label>IP de origem</label><input class="mono" type="text" id="pSrcIp" value="192.168.1.45" required></div>
+      <div><label>Porta de origem</label><input class="mono" type="number" id="pSrcPort" value="51342" min="1" max="65535"></div>
+      <div><label>IP de destino</label><input class="mono" type="text" id="pDstIp" value="200.150.10.5" required></div>
+      <div class="full"><label>Porta de destino</label><input class="mono" type="number" id="pDstPort" value="443" min="1" max="65535"></div>
+      <button type="submit" class="send-btn">Enviar pacote pela cadeia</button>
+    </form>
+
+    <h2 style="margin-top:4px;">Pipeline de avaliação</h2>
+    <div class="pipeline" id="pipeline"><p class="small" style="color:var(--muted)">Envie um pacote para ver a avaliação regra a regra.</p></div>
+    <div class="result-banner" id="resultBanner"></div>
+  </section>
+
+  <section class="panel log-panel">
+    <h2>Histórico de pacotes</h2>
+    <table id="logTable" style="display:none;">
+      <thead><tr><th>#</th><th>Proto</th><th>Origem</th><th>Destino</th><th>Regra aplicada</th><th>Resultado</th></tr></thead>
+      <tbody id="logBody"></tbody>
+    </table>
+    <p class="log-empty" id="logEmpty">Nenhum pacote enviado ainda.</p>
+  </section>
+</main>
+
+<footer>Simulador educacional — modelo simplificado de firewall stateless (filtro de pacotes).</footer>
+
+<script>
+function defaultRules(){
+  return [
+    {action:'ALLOW', proto:'TCP', srcIp:'192.168.1.0/24', srcPort:'any', dstIp:'any', dstPort:'443'},
+    {action:'ALLOW', proto:'TCP', srcIp:'192.168.1.0/24', srcPort:'any', dstIp:'any', dstPort:'80'},
+    {action:'ALLOW', proto:'TCP', srcIp:'192.168.1.0/24', srcPort:'any', dstIp:'10.0.0.10', dstPort:'22'},
+    {action:'BLOCK', proto:'TCP', srcIp:'any', srcPort:'any', dstIp:'any', dstPort:'23'},
+    {action:'ALLOW', proto:'UDP', srcIp:'192.168.1.0/24', srcPort:'any', dstIp:'any', dstPort:'53'},
+  ];
+}
+let rules = defaultRules();
+let logCounter = 0;
+
+function ipToInt(ip){
+  const p = ip.split('.').map(Number);
+  if(p.length!==4 || p.some(n=>isNaN(n)||n<0||n>255)) return null;
+  return ((p[0]<<24)>>>0)+(p[1]<<16)+(p[2]<<8)+p[3];
+}
+function ipMatches(rule, ip){
+  if(rule==='any') return true;
+  if(rule.includes('/')){
+    const [base, bits] = rule.split('/');
+    const baseInt = ipToInt(base), target = ipToInt(ip), maskBits = parseInt(bits,10);
+    if(baseInt===null || target===null) return false;
+    const mask = maskBits===0 ? 0 : (~0 << (32-maskBits)) >>> 0;
+    return (baseInt & mask) === (target & mask);
+  }
+  return rule === ip;
+}
+function portMatches(rule, port){
+  return rule === 'any' || String(rule) === String(port);
+}
+function ruleMatches(rule, pkt){
+  return rule.proto.toUpperCase() === pkt.proto.toUpperCase() &&
+         ipMatches(rule.srcIp.trim(), pkt.srcIp) &&
+         portMatches(rule.srcPort.trim(), pkt.srcPort) &&
+         ipMatches(rule.dstIp.trim(), pkt.dstIp) &&
+         portMatches(rule.dstPort.trim(), pkt.dstPort);
+}
+
+function renderRules(){
+  const body = document.getElementById('rulesBody');
+  body.innerHTML = '';
+  rules.forEach((r,i)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="rule-num mono">${i+1}</td>
+      <td><select data-i="${i}" data-f="action">
+        <option value="ALLOW"${r.action==='ALLOW'?' selected':''}>ALLOW</option>
+        <option value="BLOCK"${r.action==='BLOCK'?' selected':''}>BLOCK</option>
+      </select></td>
+      <td><select data-i="${i}" data-f="proto">
+        <option${r.proto==='TCP'?' selected':''}>TCP</option>
+        <option${r.proto==='UDP'?' selected':''}>UDP</option>
+        <option${r.proto==='ICMP'?' selected':''}>ICMP</option>
+      </select></td>
+      <td><input class="mono" type="text" data-i="${i}" data-f="srcIp" value="${r.srcIp}"></td>
+      <td><input class="mono" type="text" data-i="${i}" data-f="srcPort" value="${r.srcPort}"></td>
+      <td><input class="mono" type="text" data-i="${i}" data-f="dstIp" value="${r.dstIp}"></td>
+      <td><input class="mono" type="text" data-i="${i}" data-f="dstPort" value="${r.dstPort}"></td>
+      <td class="row-actions">
+        <button data-move="${i}" data-dir="-1" title="Subir" ${i===0?'disabled':''}>↑</button>
+        <button data-move="${i}" data-dir="1" title="Descer" ${i===rules.length-1?'disabled':''}>↓</button>
+        <button data-del="${i}" title="Excluir">✕</button>
+      </td>`;
+    body.appendChild(tr);
+  });
+  body.querySelectorAll('select,input').forEach(el=>{
+    el.addEventListener('change', e=>{
+      const i = +e.target.dataset.i, f = e.target.dataset.f;
+      rules[i][f] = e.target.value.trim();
+    });
+  });
+  body.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click', e=>{
+    rules.splice(+e.target.dataset.del,1); renderRules();
+  }));
+  body.querySelectorAll('[data-move]').forEach(b=>b.addEventListener('click', e=>{
+    const i = +e.target.dataset.move, dir = +e.target.dataset.dir, j = i+dir;
+    if(j<0||j>=rules.length) return;
+    [rules[i],rules[j]] = [rules[j],rules[i]]; renderRules();
+  }));
+}
+
+document.getElementById('addRuleBtn').addEventListener('click', ()=>{
+  rules.push({action:'ALLOW',proto:'TCP',srcIp:'any',srcPort:'any',dstIp:'any',dstPort:'any'});
+  renderRules();
+});
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  rules = defaultRules(); renderRules();
+});
+
+function ruleDesc(r){
+  return `${r.proto} ${r.srcIp}:${r.srcPort} → ${r.dstIp}:${r.dstPort}`;
+}
+
+document.getElementById('packetForm').addEventListener('submit', e=>{
+  e.preventDefault();
+  const pkt = {
+    proto: document.getElementById('pProto').value,
+    srcIp: document.getElementById('pSrcIp').value.trim(),
+    srcPort: document.getElementById('pSrcPort').value.trim(),
+    dstIp: document.getElementById('pDstIp').value.trim(),
+    dstPort: document.getElementById('pDstPort').value.trim(),
+  };
+  if(ipToInt(pkt.srcIp)===null || ipToInt(pkt.dstIp)===null){
+    alert('Informe endereços IP válidos (formato 0.0.0.0).');
+    return;
+  }
+
+  const pipeline = document.getElementById('pipeline');
+  pipeline.innerHTML = '';
+  const banner = document.getElementById('resultBanner');
+  banner.className = 'result-banner';
+
+  let matchIndex = -1;
+  rules.forEach((r,i)=>{
+    const step = document.createElement('div');
+    step.className = 'pl-step';
+    step.id = 'step'+i;
+    step.innerHTML = `<span class="pl-idx mono">${i+1}</span><span class="pl-desc mono">${ruleDesc(r)}</span><span class="pl-verdict"></span>`;
+    pipeline.appendChild(step);
+    if(matchIndex===-1 && ruleMatches(r, pkt)) matchIndex = i;
+  });
+
+  let i = 0;
+  const delay = 260;
+  function step(){
+    if(i>0) document.getElementById('step'+(i-1))?.classList.remove('active');
+    if(i >= rules.length || (matchIndex!==-1 && i>matchIndex)){
+      finish(); return;
+    }
+    const el = document.getElementById('step'+i);
+    el.classList.add('active');
+    el.querySelector('.pl-verdict').textContent = 'verificando…';
+    if(i===matchIndex){
+      const r = rules[i];
+      setTimeout(()=>{
+        el.classList.remove('active');
+        el.classList.add(r.action==='ALLOW'?'matched-allow':'matched-block');
+        el.querySelector('.pl-verdict').textContent = r.action==='ALLOW' ? 'casou — ALLOW' : 'casou — BLOCK';
+        finish();
+      }, delay);
+      return;
+    }
+    el.querySelector('.pl-verdict').textContent = 'não casa';
+    setTimeout(()=>{ i++; step(); }, delay);
+  }
+
+  function finish(){
+    const finalAction = matchIndex===-1 ? 'BLOCK' : rules[matchIndex].action;
+    banner.classList.add('show', finalAction==='ALLOW' ? 'result-allow':'result-block');
+    banner.textContent = finalAction==='ALLOW'
+      ? `Pacote PERMITIDO — casou com a regra ${matchIndex+1}.`
+      : matchIndex===-1
+        ? 'Pacote BLOQUEADO — nenhuma regra casou (política padrão).'
+        : `Pacote BLOQUEADO — casou com a regra ${matchIndex+1}.`;
+    addLog(pkt, matchIndex, finalAction);
+  }
+  step();
+});
+
+function addLog(pkt, matchIndex, action){
+  logCounter++;
+  const body = document.getElementById('logBody');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td class="mono">${logCounter}</td>
+    <td class="mono">${pkt.proto}</td>
+    <td class="mono">${pkt.srcIp}:${pkt.srcPort}</td>
+    <td class="mono">${pkt.dstIp}:${pkt.dstPort}</td>
+    <td class="mono">${matchIndex===-1 ? 'default deny' : '#'+(matchIndex+1)}</td>
+    <td><span class="action-tag ${action==='ALLOW'?'action-allow':'action-block'}">${action}</span></td>`;
+  body.prepend(tr);
+  document.getElementById('logTable').style.display='table';
+  document.getElementById('logEmpty').style.display='none';
+}
+
+renderRules();
+</script>
+</body>
+</html>
